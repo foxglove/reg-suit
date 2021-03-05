@@ -88,13 +88,24 @@ export class GitHubNotifierPlugin implements NotifierPlugin<GitHubPluginOption> 
     const passedItemsCount = passedItems.length;
     const state = failedItemsCount + newItemsCount + deletedItemsCount === 0 ? "success" : "failure";
     const description = state === "success" ? "Regression testing passed" : "Regression testing failed";
-    let sha1: string;
+    let sha1: string | undefined;
+    let branchName: string | undefined;
 
-    if (head.branch) {
+    this._logger.info("env" + JSON.stringify(process.env, null, "  "));
+
+    if (head.type === "branch" && head.branch) {
       sha1 = head.branch.commit.hash;
+      branchName = head.branch.name;
+    } else if (process.env.GITHUB_REF) {
+      // detect git branch name inside GitHub Actions
+      sha1 = process.env.GITHUB_SHA ?? head.commit?.hash;
+      branchName = process.env.GITHUB_REF;
     } else if (head.commit) {
       sha1 = head.commit.hash;
-    } else {
+      branchName = undefined;
+    }
+
+    if (!sha1) {
       this._logger.error("Can't detect HEAD branch or commit.");
       return Promise.resolve();
     }
@@ -125,12 +136,12 @@ export class GitHubNotifierPlugin implements NotifierPlugin<GitHubPluginOption> 
     }
 
     if (this._prComment) {
-      if (head.type === "branch" && head.branch) {
+      if (branchName) {
         const prCommentBody: CommentToPrBody = {
           ...this._apiOpt,
           behavior: this._behavior,
-          branchName: head.branch.name,
           headOid: sha1,
+          branchName,
           failedItemsCount,
           newItemsCount,
           deletedItemsCount,
